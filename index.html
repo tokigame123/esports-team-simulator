@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>最強のeスポーツチームを作ろう！シミュレーター</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="stage">
+        <header class="topbar">
+          <img src="assets/logo-wide.png" alt="最強のeスポーツチームを作ろう！" class="logo" />
+          <div class="turnbox">
+            <span class="label">TURN</span>
+            <strong id="turnName">プレイヤー1</strong>
+          </div>
+          <button id="resetBtn" class="icon-button" title="リセット" aria-label="リセット">↻</button>
+        </header>
+
+        <div class="board-wrap">
+          <img src="assets/board.png" alt="ゲームボード" class="board" />
+          <div id="tokens" class="tokens" aria-hidden="true"></div>
+        </div>
+      </section>
+
+      <aside class="control-panel">
+        <section class="panel block primary-actions">
+          <div class="dice" id="diceValue">1</div>
+          <button id="rollBtn" class="main-button">サイコロを振る</button>
+          <button id="drawBtn" class="sub-button">選手カード</button>
+        </section>
+
+        <section class="panel block">
+          <div class="section-head">
+            <h2>参加者</h2>
+            <div class="stepper">
+              <button id="removePlayer" title="減らす" aria-label="参加者を減らす">−</button>
+              <span id="playerCount">4</span>
+              <button id="addPlayer" title="増やす" aria-label="参加者を増やす">＋</button>
+            </div>
+          </div>
+          <div id="players" class="players"></div>
+        </section>
+
+        <section class="panel block card-zone">
+          <div class="section-head">
+            <h2>最新カード</h2>
+            <button id="shuffleBtn" title="山札を混ぜる" aria-label="山札を混ぜる">⟳</button>
+          </div>
+          <img id="cardImage" src="assets/card-t.png" alt="選手カード" class="card-preview" />
+          <div id="cardText" class="card-text"></div>
+        </section>
+
+        <section class="panel block">
+          <div class="section-head">
+            <h2>ログ</h2>
+            <button id="clearLog" title="ログを消す" aria-label="ログを消す">×</button>
+          </div>
+          <ol id="log" class="log"></ol>
+        </section>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
