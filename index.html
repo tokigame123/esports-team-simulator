@@ -3,63 +3,148 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>最強のeスポーツチームを作ろう！シミュレーター</title>
+    <title>最強のeスポーツチームを作ろう！運営シミュレーター</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="app">
-      <section class="stage">
-        <header class="topbar">
-          <img src="assets/logo-wide.png" alt="最強のeスポーツチームを作ろう！" class="logo" />
-          <div class="turnbox">
-            <span class="label">TURN</span>
-            <strong id="turnName">プレイヤー1</strong>
-          </div>
-          <button id="resetBtn" class="icon-button" title="リセット" aria-label="リセット">↻</button>
-        </header>
+    <main class="shell">
+      <header class="app-header">
+        <img src="assets/logo-wide.png" alt="最強のeスポーツチームを作ろう！" />
+        <div>
+          <span id="phaseLabel">準備</span>
+          <strong id="turnLabel">順番決め</strong>
+        </div>
+        <button id="resetBtn" class="danger">リセット</button>
+      </header>
 
-        <div class="board-wrap">
-          <img src="assets/board.png" alt="ゲームボード" class="board" />
-          <div id="tokens" class="tokens" aria-hidden="true"></div>
+      <nav class="tabs" aria-label="画面切り替え">
+        <button data-view="setup" class="active">準備</button>
+        <button data-view="board">本編</button>
+        <button data-view="sponsor">スポンサー</button>
+        <button data-view="battle">ミニゲーム/試合</button>
+        <button data-view="finance">決算</button>
+      </nav>
+
+      <section id="setup" class="view active">
+        <div class="grid two">
+          <section class="panel">
+            <div class="section-head">
+              <h1>順番決め</h1>
+              <div class="stepper">
+                <button id="removeTeam">−</button>
+                <span id="teamCount">4</span>
+                <button id="addTeam">＋</button>
+              </div>
+            </div>
+            <p class="note">各チームは創業資金100万STから開始します。サイコロで順番を決めた後、選手を最大3人まで獲得してください。</p>
+            <div id="orderList" class="team-list"></div>
+            <div class="actions">
+              <button id="rollOrder" class="primary">サイコロで順番決定</button>
+              <button id="startDraft">選手スカウトへ</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h1>選手スカウト</h1>
+            <div id="scoutStatus" class="status-line"></div>
+            <div id="market" class="market"></div>
+            <div class="actions">
+              <button id="passDraft">スカウトをパス</button>
+              <button id="finishDraft" class="primary">本編開始</button>
+            </div>
+          </section>
         </div>
       </section>
 
-      <aside class="control-panel">
-        <section class="panel block primary-actions">
-          <div class="dice" id="diceValue">1</div>
-          <button id="rollBtn" class="main-button">サイコロを振る</button>
-          <button id="drawBtn" class="sub-button">選手カード</button>
-        </section>
-
-        <section class="panel block">
-          <div class="section-head">
-            <h2>参加者</h2>
-            <div class="stepper">
-              <button id="removePlayer" title="減らす" aria-label="参加者を減らす">−</button>
-              <span id="playerCount">4</span>
-              <button id="addPlayer" title="増やす" aria-label="参加者を増やす">＋</button>
+      <section id="board" class="view">
+        <div class="grid board-grid">
+          <section class="board-panel">
+            <div class="board-wrap">
+              <img src="assets/board.png" alt="ゲームボード" class="board-img" />
+              <div id="tokens" class="tokens"></div>
             </div>
-          </div>
-          <div id="players" class="players"></div>
-        </section>
+          </section>
 
-        <section class="panel block card-zone">
-          <div class="section-head">
-            <h2>最新カード</h2>
-            <button id="shuffleBtn" title="山札を混ぜる" aria-label="山札を混ぜる">⟳</button>
-          </div>
-          <img id="cardImage" src="assets/card-t.png" alt="選手カード" class="card-preview" />
-          <div id="cardText" class="card-text"></div>
-        </section>
+          <aside class="panel turn-panel">
+            <h1>ターン進行</h1>
+            <div id="currentTeamCard" class="current-team"></div>
+            <div class="move-choice">
+              <button data-move="streamer">ストリーマー</button>
+              <button data-move="sponsor">スポンサー</button>
+              <button data-move="training">選手育成</button>
+            </div>
+            <button id="endWeekBtn">全員移動済みにする</button>
+            <div id="teamsPanel" class="team-list compact"></div>
+          </aside>
+        </div>
+      </section>
 
-        <section class="panel block">
-          <div class="section-head">
-            <h2>ログ</h2>
-            <button id="clearLog" title="ログを消す" aria-label="ログを消す">×</button>
-          </div>
-          <ol id="log" class="log"></ol>
-        </section>
-      </aside>
+      <section id="sponsor" class="view">
+        <div class="grid two">
+          <section class="panel">
+            <h1>スポンサー交渉</h1>
+            <p class="note">条件を満たすスポンサーは契約できます。契約後は自分のターンが来るたびにスポンサー料金を獲得します。</p>
+            <div id="sponsorTeamSelect" class="selector-row"></div>
+            <div class="sponsor-editor">
+              <input id="sponsorName" placeholder="スポンサー名" />
+              <input id="sponsorFee" type="number" min="0" placeholder="料金(万ST)" />
+              <input id="sponsorFans" type="number" min="0" placeholder="必要ファン" />
+              <input id="sponsorWins" type="number" min="0" placeholder="必要勝利" />
+              <input id="sponsorPlayers" type="number" min="0" max="3" placeholder="必要選手数" />
+              <button id="addSponsorRule">条件を登録</button>
+            </div>
+            <div id="sponsorList" class="sponsor-list"></div>
+          </section>
+          <section class="panel">
+            <h1>契約中スポンサー</h1>
+            <div id="contractList" class="team-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="battle" class="view">
+        <div class="grid two">
+          <section class="panel">
+            <div class="section-head">
+              <h1>ミニゲーム / BO3試合</h1>
+              <button id="makeMatch">ランダム対戦</button>
+            </div>
+            <div id="matchInfo" class="match-info"></div>
+            <div id="battlePick" class="battle-pick"></div>
+            <div id="countdown" class="countdown">READY</div>
+            <div id="reveal" class="reveal"></div>
+            <div class="actions">
+              <button id="startRound" class="primary">3,2,1 表示</button>
+              <button id="teamAWins">左チーム勝利登録</button>
+              <button id="teamBWins">右チーム勝利登録</button>
+            </div>
+          </section>
+          <section class="panel">
+            <h1>資料参照</h1>
+            <div class="affinity">
+              <div><strong>T</strong> テクニカル</div>
+              <div><strong>F</strong> フィジカル</div>
+              <div><strong>H</strong> ハイド</div>
+            </div>
+            <p class="note">勝敗は資料の相性表に従って、表示後に登録してください。こちらで勝手な相性バランスは追加していません。</p>
+          </section>
+        </div>
+      </section>
+
+      <section id="finance" class="view">
+        <div class="grid two">
+          <section class="panel">
+            <h1>決算・勝利条件</h1>
+            <div id="ranking" class="ranking"></div>
+            <img src="assets/victory-conditions.png" alt="勝利条件" class="reference-img" />
+          </section>
+          <section class="panel">
+            <h1>資金推移 / ログ</h1>
+            <div id="moneyChart" class="money-chart"></div>
+            <ol id="log" class="log"></ol>
+          </section>
+        </div>
+      </section>
     </main>
 
     <script src="app.js"></script>
