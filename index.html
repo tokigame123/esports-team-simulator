@@ -21,6 +21,7 @@
         <button data-view="setup" class="active">準備</button>
         <button data-view="board">本編</button>
         <button data-view="sponsor">スポンサー</button>
+        <button data-view="training">育成</button>
         <button data-view="battle">ミニゲーム/試合</button>
         <button data-view="finance">決算</button>
       </nav>
@@ -36,7 +37,7 @@
                 <button id="addTeam">＋</button>
               </div>
             </div>
-            <p class="note">各チームは創業資金100万STから開始します。サイコロで順番を決めた後、選手を最大3人まで獲得してください。</p>
+            <p class="note">各チームは創業資金100万STから開始します。サイコロで順番を決めた後、初期スカウトでは各チーム最大3名まで獲得できます。</p>
             <div id="orderList" class="team-list"></div>
             <div class="actions">
               <button id="rollOrder" class="primary">サイコロで順番決定</button>
@@ -50,7 +51,7 @@
             <div id="scoutStatus" class="status-line"></div>
             <div id="market" class="market"></div>
             <div class="actions">
-              <button id="passDraft">スカウトをパス</button>
+              <button id="passDraft">次へ</button>
               <button id="finishDraft" class="primary">本編開始</button>
             </div>
           </section>
@@ -69,6 +70,7 @@
           <aside class="panel turn-panel">
             <h1>ターン進行</h1>
             <div id="currentTeamCard" class="current-team"></div>
+            <button id="openRecruit" class="wide-action">追加スカウト</button>
             <div class="move-choice">
               <button data-move="streamer">ストリーマー</button>
               <button data-move="sponsor">スポンサー</button>
@@ -78,6 +80,21 @@
             <div id="teamsPanel" class="team-list compact"></div>
             <div id="teamDetail" class="team-detail"></div>
           </aside>
+        </div>
+      </section>
+
+      <section id="training" class="view">
+        <div class="grid two">
+          <section class="panel">
+            <h1>選手育成</h1>
+            <p class="note">育成マスを踏んだチームは、所持選手のうち1人を強化できます。育成値は対戦の勝敗判定に影響します。</p>
+            <div id="trainingTeam" class="draft-hero"></div>
+            <div id="trainingList" class="market"></div>
+          </section>
+          <section class="panel">
+            <h1>育成ルール</h1>
+            <p class="note">同じカード同士は育成値が高い方が勝利。本来負けるカードでも、育成値が3以上高ければ相打ちになります。</p>
+          </section>
         </div>
       </section>
 
@@ -117,18 +134,17 @@
             <div id="reveal" class="reveal"></div>
             <div class="actions">
               <button id="battleNext" class="primary">次へ</button>
-              <button id="teamAWins">左チーム勝利登録</button>
-              <button id="teamBWins">右チーム勝利登録</button>
             </div>
           </section>
           <section class="panel">
-            <h1>資料参照</h1>
+            <h1>選手同士の力関係</h1>
             <div class="affinity">
               <div><strong>T</strong> テクニカル</div>
               <div><strong>F</strong> フィジカル</div>
               <div><strong>H</strong> ハイド</div>
             </div>
-            <p class="note">勝敗は資料の相性表に従って、表示後に登録してください。こちらで勝手な相性バランスは追加していません。</p>
+            <p class="note">矢印方向を力関係として自動判定します。あいこは相打ちとなり、そのラウンドをやり直します。</p>
+            <img src="assets/affinity-rules.png" alt="選手同士の力関係" class="reference-img" />
           </section>
         </div>
       </section>
@@ -137,8 +153,10 @@
         <div class="grid two">
           <section class="panel">
             <h1>決算・勝利条件</h1>
+            <button id="runSettlement" class="primary">決算を手動実行</button>
             <div id="ranking" class="ranking"></div>
             <img src="assets/victory-conditions.png" alt="勝利条件" class="reference-img" />
+            <img src="assets/season-settlement.png" alt="シーズン終わりの決算" class="reference-img" />
           </section>
           <section class="panel">
             <h1>資金推移 / ログ</h1>

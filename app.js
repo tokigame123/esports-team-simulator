@@ -9,6 +9,18 @@ const playersMarket = [
   { id: "ft", name: "選手F&T", role: "フィジカル & テクニカル", attrs: ["F", "T"], cost: 25, img: "assets/card-ft.png" },
 ];
 
+const INITIAL_SCOUT_LIMIT = 3;
+const RANK_REWARDS = [150, 125, 100, 75];
+
+const relationshipWins = {
+  th: ["t", "h", "hf"],
+  t: ["h", "hf"],
+  f: ["t", "th", "hf", "ft"],
+  h: ["f", "ft"],
+  hf: ["h", "ft"],
+  ft: ["t", "th"],
+};
+
 const lanes = {
   start: { x: 13, y: 32 },
   streamer: [
@@ -45,6 +57,7 @@ let state = {
   draftIndex: 0,
   selectedSponsorTeam: 0,
   selectedTeamDetail: 0,
+  selectedTrainingTeam: 0,
   sponsorRules: [],
   teams: [],
   log: [],
@@ -70,6 +83,7 @@ function blankTeam(index) {
     progress: 0,
     moneyHistory: [100],
     opponents: {},
+    settlements: [],
   };
 }
 
@@ -91,10 +105,27 @@ function load() {
     state = JSON.parse(raw);
     state.sponsorRules ||= [];
     state.selectedTeamDetail ||= 0;
+    state.selectedTrainingTeam ||= 0;
     if (!state.teams?.length) initTeams(4);
+    normalizeState();
   } catch {
     initTeams(4);
   }
+}
+
+function normalizeState() {
+  state.teams.forEach((team, index) => {
+    team.color ||= teamColors[index];
+    team.moneyHistory ||= [team.money || 100];
+    team.opponents ||= {};
+    team.settlements ||= [];
+    team.roster ||= [];
+    team.roster = team.roster.map((player) => ({
+      ...player,
+      instanceId: player.instanceId || crypto.randomUUID(),
+      trained: player.trained || 0,
+    }));
+  });
 }
 
 function money(n) {
@@ -129,6 +160,7 @@ function render() {
   renderSetup();
   renderBoard();
   renderSponsors();
+  renderTraining();
   renderBattle();
   renderFinance();
   save();
@@ -138,7 +170,9 @@ function phaseName() {
   return {
     order: "準備",
     draft: "選手スカウト",
+    recruit: "追加スカウト",
     play: `第${state.week}週`,
+    training: "選手育成",
     battle: `第${state.week}週 試合`,
     finance: "決算",
   }[state.phase] || "進行中";
@@ -146,6 +180,8 @@ function phaseName() {
 
 function turnName() {
   if (state.phase === "draft") return `${state.teams[state.draftIndex]?.name || ""} が選手獲得`;
+  if (state.phase === "recruit") return `${state.teams[state.draftIndex]?.name || ""} が追加スカウト`;
+  if (state.phase === "training") return `${state.teams[state.selectedTrainingTeam]?.name || ""} が育成`;
   if (state.phase === "play") return `${activeTeam()?.name || ""} のターン`;
   if (state.phase === "battle") return "BO3対戦";
   return "順番決め";
@@ -168,15 +204,17 @@ function renderSetup() {
     .join("");
 
   const draftTeam = state.teams[state.draftIndex] || state.teams[0];
+  const scouting = state.phase === "draft" || state.phase === "recruit";
+  const scoutLimit = state.phase === "draft" ? INITIAL_SCOUT_LIMIT : Infinity;
   $("draftHero").innerHTML =
-    state.phase === "draft"
-      ? `<span>現在スカウト中</span><strong>${draftTeam.name}</strong><em>残り資金 ${money(draftTeam.money)} / 選手 ${draftTeam.roster.length}/3</em>`
+    scouting
+      ? `<span>${state.phase === "draft" ? "初期スカウト中" : "追加スカウト中"}</span><strong>${draftTeam.name}</strong><em>残り資金 ${money(draftTeam.money)} / 選手 ${draftTeam.roster.length}${state.phase === "draft" ? `/${scoutLimit}` : ""}</em>`
       : `<span>現在スカウト中</span><strong>順番決定待ち</strong><em>サイコロで順番を決めてください</em>`;
   $("scoutStatus").textContent =
-    state.phase === "draft" ? `${draftTeam.name}: 残り資金 ${money(draftTeam.money)} / 選手 ${draftTeam.roster.length}/3` : "順番決定後にスカウトできます";
+    scouting ? `${draftTeam.name}: まとめて選択できます。終わったら「次へ」を押してください。` : "順番決定後にスカウトできます";
   $("market").innerHTML = playersMarket
     .map((p) => {
-      const disabled = state.phase !== "draft" || draftTeam.roster.length >= 3 || draftTeam.money < p.cost;
+      const disabled = !scouting || (state.phase === "draft" && draftTeam.roster.length >= scoutLimit) || draftTeam.money < p.cost;
       return `
       <article class="player-card">
         <img src="${p.img}" alt="${p.name}">
@@ -191,7 +229,7 @@ function renderSetup() {
 function renderBoard() {
   const current = activeTeam();
   $("currentTeamCard").innerHTML = current
-    ? `<strong>${current.name}</strong><div class="stats">資金 ${money(current.money)} / ファン ${current.fans} / スポンサー収入 ${money(sponsorIncome(current))}/ターン / 選手 ${current.roster.length}</div>`
+    ? `<strong>${current.name}</strong><div class="stats">シーズン${seasonStats(current).rank}位 / 資金 ${money(current.money)} / ファン ${current.fans} / スポンサー収入 ${money(sponsorIncome(current))}/ターン / 選手 ${current.roster.length}</div>`
     : "";
 
   $("teamsPanel").innerHTML = state.teams.map(teamCard).join("");
@@ -220,7 +258,8 @@ function teamCard(t) {
         <strong>${t.name}</strong>
         <button data-team-detail="${index}">確認</button>
       </div>
-      <div class="stats">資金 ${money(t.money)} / ファン ${t.fans} / 勝率 ${rate}% / スポンサー ${t.sponsorIds.length} / 選手 ${t.roster.map((r) => r.role).join("・") || "未獲得"}</div>
+      <div class="stats">シーズン${seasonStats(t).rank}位 / ${t.wins}勝${t.losses}敗 / 勝率 ${rate}%</div>
+      <div class="stats">資金 ${money(t.money)} / ファン ${t.fans} / スポンサー ${t.sponsorIds.length} / 選手 ${t.roster.map((r) => `${r.role}(育成${r.trained || 0})`).join("・") || "未獲得"}</div>
     </article>`;
 }
 
@@ -241,13 +280,33 @@ function renderTeamDetail() {
                 <article>
                   <img src="${p.img}" alt="${p.role}">
                   <strong>${p.role}</strong>
-                  <span>${p.attrs.join("/")}</span>
+                  <span>${p.attrs.join("/")} / 育成${p.trained || 0}</span>
                 </article>`
               )
               .join("")
           : `<p class="note">まだ選手を獲得していません。</p>`
       }
     </div>`;
+}
+
+function renderTraining() {
+  const team = state.teams[state.selectedTrainingTeam] || activeTeam() || state.teams[0];
+  $("trainingTeam").innerHTML = team
+    ? `<span>育成対象チーム</span><strong>${team.name}</strong><em>強化する選手を1人選んでください</em>`
+    : "";
+  $("trainingList").innerHTML = team?.roster.length
+    ? team.roster
+        .map(
+          (p) => `
+          <article class="player-card">
+            <img src="${p.img}" alt="${p.role}">
+            <strong>${p.role}</strong>
+            <span class="stats">属性 ${p.attrs.join("/")} / 育成値 ${p.trained || 0}</span>
+            <button data-train-player="${p.instanceId}">育成 +1</button>
+          </article>`
+        )
+        .join("")
+    : `<article class="sponsor-card"><strong>育成できる選手がいません</strong><span class="stats">先に選手をスカウトしてください。</span></article>`;
 }
 
 function renderSponsors() {
@@ -289,7 +348,8 @@ function renderBattle() {
   const side = match.pickStep === "b" ? "b" : "a";
   const team = side === "a" ? a : b;
   const used = side === "a" ? match.usedA : match.usedB;
-  const available = team.roster.filter((_, idx) => match.round === 3 || !used.includes(idx));
+  const tieBlocked = side === "a" ? match.tieBlockedA || [] : match.tieBlockedB || [];
+  const available = team.roster.filter((_, idx) => (match.round === 3 || !used.includes(idx)) && !tieBlocked.includes(idx));
   $("battlePick").innerHTML =
     match.pickStep === "ready"
       ? `<div class="secret-ready"><strong>両チーム選択完了</strong><span>3,2,1 の後に同時公開します</span></div>`
@@ -297,7 +357,11 @@ function renderBattle() {
           <strong>${team.name} が選択中</strong>
           <span class="stats">相手に見えないように、選んだら「次へ」を押してください。</span>
           <select id="secretPick">
-            ${available.map((p) => `<option value="${team.roster.indexOf(p)}">${p.role}</option>`).join("")}
+            ${
+              available.length
+                ? available.map((p) => `<option value="${team.roster.indexOf(p)}">${p.role} / 育成${p.trained || 0}</option>`).join("")
+                : `<option value="">選択できる選手がいません</option>`
+            }
           </select>
         </div>`;
 }
@@ -307,10 +371,13 @@ function renderFinance() {
   $("ranking").innerHTML = ranked
     .map((t, i) => {
       const detail = victoryBreakdown(t);
+      const season = seasonStats(t);
       return `
       <article class="rank-card">
         <strong>${i + 1}位 ${t.name}: ${detail.total}点</strong>
+        <span class="stats">シーズン順位 ${season.rank}位 / 勝敗 ${t.wins}勝${t.losses}敗 / 勝率 ${season.rate}%</span>
         <span class="stats">勝率 ${detail.winRatePoint} / スポンサー ${detail.sponsorPoint} / ファン ${detail.fanPoint} / 資金 ${detail.moneyPoint}</span>
+        <span class="stats">直近決算: ${t.settlements?.[0] ? settlementText(t.settlements[0]) : "未実行"}</span>
       </article>`;
     })
     .join("");
@@ -338,6 +405,27 @@ function victoryBreakdown(team) {
   return { winRatePoint, sponsorPoint, fanPoint, moneyPoint, total: winRatePoint + sponsorPoint + fanPoint + moneyPoint };
 }
 
+function seasonStats(team) {
+  const ranked = seasonRanking();
+  const index = ranked.indexOf(team);
+  const games = team.wins + team.losses;
+  return { rank: index + 1, rate: games ? Math.round((team.wins / games) * 100) : 0 };
+}
+
+function seasonRanking() {
+  return [...state.teams].sort((a, b) => {
+    const aGames = a.wins + a.losses;
+    const bGames = b.wins + b.losses;
+    const aRate = aGames ? a.wins / aGames : 0;
+    const bRate = bGames ? b.wins / bGames : 0;
+    return b.wins - a.wins || bRate - aRate || b.fans - a.fans || b.money - a.money;
+  });
+}
+
+function settlementText(s) {
+  return `給与-${money(s.salary)} / 順位+${money(s.rankReward)} / ファン+${money(s.fanReward)} / 残高${money(s.after)}`;
+}
+
 function tier(value, thresholds, points, bonusStart, bonusStep) {
   if (bonusStart !== undefined && value > bonusStart) return points[0] + Math.floor((value - bonusStart) / bonusStep);
   for (let i = 0; i < thresholds.length; i++) if (value >= thresholds[i]) return points[i];
@@ -347,17 +435,30 @@ function tier(value, thresholds, points, bonusStart, bonusStep) {
 function buyPlayer(id) {
   const team = state.teams[state.draftIndex];
   const player = playersMarket.find((p) => p.id === id);
-  if (!team || !player || team.roster.length >= 3 || team.money < player.cost) return;
+  const limit = state.phase === "draft" ? INITIAL_SCOUT_LIMIT : Infinity;
+  if (!team || !player || team.roster.length >= limit || team.money < player.cost) return;
   team.money -= player.cost;
-  team.roster.push(player);
+  team.roster.push({ ...player, instanceId: crypto.randomUUID(), trained: 0 });
   addLog(`${team.name} が ${player.role} を ${money(player.cost)}で獲得`);
-  state.draftIndex = (state.draftIndex + 1) % state.teams.length;
   render();
 }
 
 function passDraft() {
-  if (state.phase !== "draft") return;
-  addLog(`${state.teams[state.draftIndex].name} がスカウトをパス`);
+  if (state.phase !== "draft" && state.phase !== "recruit") return;
+  addLog(`${state.teams[state.draftIndex].name} がスカウトを終了`);
+  if (state.phase === "recruit") {
+    state.phase = "play";
+    switchView("board");
+    return;
+  }
+  if (state.draftIndex >= state.teams.length - 1) {
+    addLog("初期スカウトを終了");
+    state.phase = "play";
+    state.turnIndex = 0;
+    startTurnIncome();
+    switchView("board");
+    return;
+  }
   state.draftIndex = (state.draftIndex + 1) % state.teams.length;
 }
 
@@ -388,11 +489,34 @@ function moveTeam(type) {
     switchView("sponsor");
   }
   if (type === "training") {
-    team.roster.forEach((p) => (p.trained = (p.trained || 0) + 1));
-    addLog(`${team.name} が選手育成を実施`);
+    state.phase = "training";
+    state.selectedTrainingTeam = state.turnIndex;
+    addLog(`${team.name} が選手育成へ`);
+    switchView("training");
+    return;
   }
   nextTurn();
   render();
+}
+
+function trainPlayer(instanceId) {
+  const team = state.teams[state.selectedTrainingTeam];
+  const player = team?.roster.find((p) => p.instanceId === instanceId);
+  if (!team || !player) return;
+  player.trained = (player.trained || 0) + 1;
+  addLog(`${team.name} が ${player.role} を育成（育成値${player.trained}）`);
+  state.phase = "play";
+  nextTurn();
+  switchView("board");
+}
+
+function openRecruit() {
+  const team = activeTeam();
+  if (!team) return;
+  state.phase = "recruit";
+  state.draftIndex = state.turnIndex;
+  addLog(`${team.name} が追加スカウトへ`);
+  switchView("setup");
 }
 
 function nextTurn() {
@@ -428,7 +552,7 @@ function endWeek() {
 function createMatch(force) {
   if (state.currentMatch && !force) return;
   const [a, b] = chooseOpponents();
-  state.currentMatch = { a, b, round: 1, scoreA: 0, scoreB: 0, usedA: [], usedB: [], locked: false, pickA: null, pickB: null, pickStep: "a" };
+  state.currentMatch = { a, b, round: 1, scoreA: 0, scoreB: 0, usedA: [], usedB: [], tieBlockedA: [], tieBlockedB: [], locked: false, pickA: null, pickB: null, pickStep: "a", lastResult: "" };
 }
 
 function chooseOpponents() {
@@ -445,8 +569,13 @@ function chooseOpponents() {
 async function battleNext() {
   const match = state.currentMatch;
   if (!match) return;
+  if (match.locked) {
+    resolveRound();
+    return;
+  }
   if (match.pickStep === "a") {
     match.pickA = Number($("secretPick").value);
+    if (Number.isNaN(match.pickA)) return;
     match.pickStep = "b";
     $("reveal").innerHTML = "";
     $("countdown").textContent = "NEXT";
@@ -455,6 +584,7 @@ async function battleNext() {
   }
   if (match.pickStep === "b") {
     match.pickB = Number($("secretPick").value);
+    if (Number.isNaN(match.pickB)) return;
     match.pickStep = "ready";
     $("reveal").innerHTML = "";
     $("countdown").textContent = "READY";
@@ -474,22 +604,36 @@ async function revealRound() {
   }
   $("countdown").textContent = "SHOW";
   $("reveal").innerHTML = [a.roster[match.pickA], b.roster[match.pickB]]
-    .map((p, i) => `<div class="reveal-card"><img src="${p.img}" alt="${p.role}"><strong>${i === 0 ? a.name : b.name}: ${p.role}</strong></div>`)
+    .map((p, i) => `<div class="reveal-card"><img src="${p.img}" alt="${p.role}"><strong>${i === 0 ? a.name : b.name}: ${p.role}</strong><span>育成${p.trained || 0}</span></div>`)
     .join("");
-  $("countdown").textContent = "勝敗登録";
+  match.lastResult = judgeRound(a.roster[match.pickA], b.roster[match.pickB]);
+  $("countdown").textContent = match.lastResult === "a" ? `${a.name} 勝利` : match.lastResult === "b" ? `${b.name} 勝利` : "相打ち";
   match.locked = true;
   save();
 }
 
-function registerRound(winnerSide) {
+function resolveRound() {
   const match = state.currentMatch;
   if (!match.locked) return;
   const a = state.teams[match.a];
   const b = state.teams[match.b];
+  if (match.lastResult === "tie") {
+    match.tieBlockedA.push(match.pickA);
+    match.tieBlockedB.push(match.pickB);
+    match.locked = false;
+    match.pickA = null;
+    match.pickB = null;
+    match.pickStep = "a";
+    $("reveal").innerHTML = "";
+    $("countdown").textContent = "相打ち再戦";
+    addLog(`${a.name} vs ${b.name} ラウンド${match.round}は相打ち。使用カードを除いて再戦`);
+    render();
+    return;
+  }
   match.usedA.push(match.pickA);
   match.usedB.push(match.pickB);
-  if (winnerSide === "a") match.scoreA += 1;
-  if (winnerSide === "b") match.scoreB += 1;
+  if (match.lastResult === "a") match.scoreA += 1;
+  if (match.lastResult === "b") match.scoreB += 1;
   if (match.scoreA === 2 || match.scoreB === 2 || match.round === 3) {
     const winner = match.scoreA >= match.scoreB ? a : b;
     const loser = winner === a ? b : a;
@@ -500,6 +644,7 @@ function registerRound(winnerSide) {
     a.opponents[b.id] = (a.opponents[b.id] || 0) + 1;
     b.opponents[a.id] = (b.opponents[a.id] || 0) + 1;
     addLog(`${a.name} vs ${b.name} は ${winner.name} の勝利`);
+    runSettlement();
     state.week += 1;
     state.phase = "play";
     state.turnIndex = 0;
@@ -513,9 +658,47 @@ function registerRound(winnerSide) {
   match.pickA = null;
   match.pickB = null;
   match.pickStep = "a";
+  match.tieBlockedA = [];
+  match.tieBlockedB = [];
   $("reveal").innerHTML = "";
   $("countdown").textContent = "READY";
   render();
+}
+
+function judgeRound(playerA, playerB) {
+  if (playerA.id === playerB.id) {
+    const diff = (playerA.trained || 0) - (playerB.trained || 0);
+    if (diff > 0) return "a";
+    if (diff < 0) return "b";
+    return "tie";
+  }
+  const aWins = relationshipWins[playerA.id]?.includes(playerB.id);
+  const bWins = relationshipWins[playerB.id]?.includes(playerA.id);
+  if (aWins && !bWins) {
+    return (playerB.trained || 0) - (playerA.trained || 0) >= 3 ? "tie" : "a";
+  }
+  if (bWins && !aWins) {
+    return (playerA.trained || 0) - (playerB.trained || 0) >= 3 ? "tie" : "b";
+  }
+  const diff = (playerA.trained || 0) - (playerB.trained || 0);
+  if (diff > 0) return "a";
+  if (diff < 0) return "b";
+  return "tie";
+}
+
+function runSettlement() {
+  const ranked = seasonRanking();
+  ranked.forEach((team, index) => {
+    const salary = team.roster.reduce((sum, player) => sum + player.cost, 0);
+    const rankReward = RANK_REWARDS[index] || RANK_REWARDS[RANK_REWARDS.length - 1];
+    const fanReward = Math.floor(team.fans / 500) * 5;
+    const before = team.money;
+    team.money = team.money - salary + rankReward + fanReward;
+    const record = { week: state.week, before, salary, rankReward, fanReward, after: team.money };
+    team.settlements.unshift(record);
+    team.moneyHistory.push(team.money);
+  });
+  addLog(`第${state.week}週の試合後決算を自動実行`);
 }
 
 function escapeHtml(value) {
@@ -537,11 +720,17 @@ document.addEventListener("click", (event) => {
   if (target.dataset.buy) buyPlayer(target.dataset.buy);
   if (target.id === "passDraft") passDraft();
   if (target.id === "finishDraft") {
+    if (state.phase === "recruit") {
+      state.phase = "play";
+      switchView("board");
+      return;
+    }
     state.phase = "play";
     state.turnIndex = 0;
     startTurnIncome();
     switchView("board");
   }
+  if (target.id === "openRecruit") openRecruit();
   if (target.dataset.move) moveTeam(target.dataset.move);
   if (target.dataset.teamDetail) {
     state.selectedTeamDetail = Number(target.dataset.teamDetail);
@@ -571,11 +760,14 @@ document.addEventListener("click", (event) => {
   }
   if (target.id === "makeMatch") createMatch(true);
   if (target.id === "battleNext") battleNext();
-  if (target.id === "teamAWins") registerRound("a");
-  if (target.id === "teamBWins") registerRound("b");
+  if (target.dataset.trainPlayer) trainPlayer(target.dataset.trainPlayer);
+  if (target.id === "runSettlement") {
+    runSettlement();
+    render();
+  }
   if (target.id === "resetBtn") {
     localStorage.removeItem("esports-manager-v2");
-    state = { phase: "order", week: 1, turnIndex: 0, draftIndex: 0, selectedSponsorTeam: 0, selectedTeamDetail: 0, sponsorRules: [], teams: [], log: [], currentMatch: null };
+    state = { phase: "order", week: 1, turnIndex: 0, draftIndex: 0, selectedSponsorTeam: 0, selectedTeamDetail: 0, selectedTrainingTeam: 0, sponsorRules: [], teams: [], log: [], currentMatch: null };
     initTeams(4);
   }
   render();
