@@ -210,9 +210,16 @@ h1 {
 
 .team-main {
   display: grid;
-  grid-template-columns: 18px 1fr auto;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
   align-items: center;
   gap: 9px;
+}
+
+.team-name-input {
+  width: 100%;
+  padding: 0 10px;
+  font-size: 17px;
+  font-weight: 1000;
 }
 
 .dot {
@@ -253,6 +260,28 @@ h1 {
   color: var(--yellow);
   font-weight: 900;
   margin-bottom: 8px;
+}
+
+.draft-hero {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: #0d1117;
+  border: 2px solid var(--yellow);
+}
+
+.draft-hero span,
+.draft-hero em {
+  color: var(--muted);
+  font-style: normal;
+  font-weight: 900;
+}
+
+.draft-hero strong {
+  font-size: clamp(28px, 4vw, 52px);
+  line-height: 1.05;
 }
 
 .board-wrap {
@@ -326,6 +355,44 @@ h1 {
   overflow: auto;
 }
 
+.team-detail {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #10141a;
+  border: 1px solid var(--line);
+}
+
+.team-detail h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.owned-roster {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.owned-roster article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.owned-roster img {
+  width: 100%;
+  aspect-ratio: 256 / 405;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #08090b;
+}
+
+.owned-roster strong,
+.owned-roster span {
+  font-size: 12px;
+}
+
 .match-info {
   padding: 12px;
   border-radius: 8px;
@@ -347,6 +414,27 @@ h1 {
 
 .pick-column select {
   width: 100%;
+}
+
+.secret-pick,
+.secret-ready {
+  grid-column: 1 / -1;
+  min-height: 170px;
+  place-content: center;
+  padding: 18px;
+  border-radius: 8px;
+  background: #0d1117;
+  border: 2px solid var(--yellow);
+}
+
+.secret-pick strong,
+.secret-ready strong {
+  font-size: clamp(24px, 3vw, 40px);
+}
+
+.secret-ready span {
+  color: var(--muted);
+  font-weight: 900;
 }
 
 .countdown {

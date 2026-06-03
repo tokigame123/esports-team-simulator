@@ -44,6 +44,7 @@ let state = {
   turnIndex: 0,
   draftIndex: 0,
   selectedSponsorTeam: 0,
+  selectedTeamDetail: 0,
   sponsorRules: [],
   teams: [],
   log: [],
@@ -89,6 +90,7 @@ function load() {
   try {
     state = JSON.parse(raw);
     state.sponsorRules ||= [];
+    state.selectedTeamDetail ||= 0;
     if (!state.teams?.length) initTeams(4);
   } catch {
     initTeams(4);
@@ -157,7 +159,7 @@ function renderSetup() {
       <article class="team-card ${i === state.turnIndex ? "active" : ""}">
         <div class="team-main">
           <span class="dot" style="background:${t.color}"></span>
-          <strong>${t.name}</strong>
+          <input class="team-name-input" data-team-name="${i}" value="${escapeHtml(t.name)}" aria-label="チーム名">
           <span class="score">${t.orderRoll || "-"}</span>
         </div>
         <div class="stats">資金 ${money(t.money)} / 選手 ${t.roster.length}/3 / スポンサー ${t.sponsorIds.length}</div>
@@ -166,6 +168,10 @@ function renderSetup() {
     .join("");
 
   const draftTeam = state.teams[state.draftIndex] || state.teams[0];
+  $("draftHero").innerHTML =
+    state.phase === "draft"
+      ? `<span>現在スカウト中</span><strong>${draftTeam.name}</strong><em>残り資金 ${money(draftTeam.money)} / 選手 ${draftTeam.roster.length}/3</em>`
+      : `<span>現在スカウト中</span><strong>順番決定待ち</strong><em>サイコロで順番を決めてください</em>`;
   $("scoutStatus").textContent =
     state.phase === "draft" ? `${draftTeam.name}: 残り資金 ${money(draftTeam.money)} / 選手 ${draftTeam.roster.length}/3` : "順番決定後にスカウトできます";
   $("market").innerHTML = playersMarket
@@ -189,6 +195,7 @@ function renderBoard() {
     : "";
 
   $("teamsPanel").innerHTML = state.teams.map(teamCard).join("");
+  renderTeamDetail();
   $("tokens").innerHTML = state.teams
     .map((t, i) => {
       const pos = tokenPos(t);
@@ -204,16 +211,43 @@ function tokenPos(team) {
 }
 
 function teamCard(t) {
+  const index = state.teams.indexOf(t);
   const rate = t.wins + t.losses ? Math.round((t.wins / (t.wins + t.losses)) * 100) : 0;
   return `
-    <article class="team-card">
+    <article class="team-card ${index === state.selectedTeamDetail ? "active" : ""}">
       <div class="team-main">
         <span class="dot" style="background:${t.color}"></span>
         <strong>${t.name}</strong>
-        <span class="score">${victoryScore(t)}</span>
+        <button data-team-detail="${index}">確認</button>
       </div>
       <div class="stats">資金 ${money(t.money)} / ファン ${t.fans} / 勝率 ${rate}% / スポンサー ${t.sponsorIds.length} / 選手 ${t.roster.map((r) => r.role).join("・") || "未獲得"}</div>
     </article>`;
+}
+
+function renderTeamDetail() {
+  const team = state.teams[state.selectedTeamDetail] || state.teams[0];
+  if (!team) {
+    $("teamDetail").innerHTML = "";
+    return;
+  }
+  $("teamDetail").innerHTML = `
+    <h2>${team.name} の選手</h2>
+    <div class="owned-roster">
+      ${
+        team.roster.length
+          ? team.roster
+              .map(
+                (p) => `
+                <article>
+                  <img src="${p.img}" alt="${p.role}">
+                  <strong>${p.role}</strong>
+                  <span>${p.attrs.join("/")}</span>
+                </article>`
+              )
+              .join("")
+          : `<p class="note">まだ選手を獲得していません。</p>`
+      }
+    </div>`;
 }
 
 function renderSponsors() {
@@ -248,22 +282,24 @@ function canContract(team, sponsor) {
 function renderBattle() {
   if (!state.currentMatch) createMatch(false);
   const match = state.currentMatch;
+  match.pickStep ||= "a";
   const a = state.teams[match.a];
   const b = state.teams[match.b];
   $("matchInfo").innerHTML = `${a.name} vs ${b.name}<br>BO3: ${match.scoreA}-${match.scoreB} / ラウンド${match.round}`;
-  $("battlePick").innerHTML = [a, b]
-    .map((team, side) => {
-      const used = side === 0 ? match.usedA : match.usedB;
-      const available = team.roster.filter((_, idx) => match.round === 3 || !used.includes(idx));
-      return `
-        <div class="pick-column">
-          <strong>${team.name}</strong>
-          <select id="${side === 0 ? "pickA" : "pickB"}">
+  const side = match.pickStep === "b" ? "b" : "a";
+  const team = side === "a" ? a : b;
+  const used = side === "a" ? match.usedA : match.usedB;
+  const available = team.roster.filter((_, idx) => match.round === 3 || !used.includes(idx));
+  $("battlePick").innerHTML =
+    match.pickStep === "ready"
+      ? `<div class="secret-ready"><strong>両チーム選択完了</strong><span>3,2,1 の後に同時公開します</span></div>`
+      : `<div class="pick-column secret-pick">
+          <strong>${team.name} が選択中</strong>
+          <span class="stats">相手に見えないように、選んだら「次へ」を押してください。</span>
+          <select id="secretPick">
             ${available.map((p) => `<option value="${team.roster.indexOf(p)}">${p.role}</option>`).join("")}
           </select>
         </div>`;
-    })
-    .join("");
 }
 
 function renderFinance() {
@@ -392,7 +428,7 @@ function endWeek() {
 function createMatch(force) {
   if (state.currentMatch && !force) return;
   const [a, b] = chooseOpponents();
-  state.currentMatch = { a, b, round: 1, scoreA: 0, scoreB: 0, usedA: [], usedB: [], locked: false, pickA: null, pickB: null };
+  state.currentMatch = { a, b, round: 1, scoreA: 0, scoreB: 0, usedA: [], usedB: [], locked: false, pickA: null, pickB: null, pickStep: "a" };
 }
 
 function chooseOpponents() {
@@ -406,12 +442,32 @@ function chooseOpponents() {
   return [0, 1];
 }
 
-async function startRound() {
+async function battleNext() {
+  const match = state.currentMatch;
+  if (!match) return;
+  if (match.pickStep === "a") {
+    match.pickA = Number($("secretPick").value);
+    match.pickStep = "b";
+    $("reveal").innerHTML = "";
+    $("countdown").textContent = "NEXT";
+    render();
+    return;
+  }
+  if (match.pickStep === "b") {
+    match.pickB = Number($("secretPick").value);
+    match.pickStep = "ready";
+    $("reveal").innerHTML = "";
+    $("countdown").textContent = "READY";
+    render();
+    return;
+  }
+  await revealRound();
+}
+
+async function revealRound() {
   const match = state.currentMatch;
   const a = state.teams[match.a];
   const b = state.teams[match.b];
-  match.pickA = Number($("pickA").value);
-  match.pickB = Number($("pickB").value);
   for (const text of ["3", "2", "1"]) {
     $("countdown").textContent = text;
     await new Promise((resolve) => setTimeout(resolve, 650));
@@ -454,9 +510,16 @@ function registerRound(winnerSide) {
   }
   match.round += 1;
   match.locked = false;
+  match.pickA = null;
+  match.pickB = null;
+  match.pickStep = "a";
   $("reveal").innerHTML = "";
   $("countdown").textContent = "READY";
   render();
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 }
 
 document.addEventListener("click", (event) => {
@@ -480,6 +543,10 @@ document.addEventListener("click", (event) => {
     switchView("board");
   }
   if (target.dataset.move) moveTeam(target.dataset.move);
+  if (target.dataset.teamDetail) {
+    state.selectedTeamDetail = Number(target.dataset.teamDetail);
+    switchView("board");
+  }
   if (target.id === "endWeekBtn") endWeek();
   if (target.dataset.sponsorTeam) state.selectedSponsorTeam = Number(target.dataset.sponsorTeam);
   if (target.dataset.contract) {
@@ -503,15 +570,26 @@ document.addEventListener("click", (event) => {
     }
   }
   if (target.id === "makeMatch") createMatch(true);
-  if (target.id === "startRound") startRound();
+  if (target.id === "battleNext") battleNext();
   if (target.id === "teamAWins") registerRound("a");
   if (target.id === "teamBWins") registerRound("b");
   if (target.id === "resetBtn") {
     localStorage.removeItem("esports-manager-v2");
-    state = { phase: "order", week: 1, turnIndex: 0, draftIndex: 0, selectedSponsorTeam: 0, sponsorRules: [], teams: [], log: [], currentMatch: null };
+    state = { phase: "order", week: 1, turnIndex: 0, draftIndex: 0, selectedSponsorTeam: 0, selectedTeamDetail: 0, sponsorRules: [], teams: [], log: [], currentMatch: null };
     initTeams(4);
   }
   render();
+});
+
+document.addEventListener("input", (event) => {
+  const target = event.target;
+  if (target.dataset?.teamName) {
+    const team = state.teams[Number(target.dataset.teamName)];
+    if (team) {
+      team.name = target.value || `チーム${Number(target.dataset.teamName) + 1}`;
+      save();
+    }
+  }
 });
 
 load();
